@@ -75,7 +75,7 @@ Else {
     }
 }
 
-### Apply update
+## Apply update
 if ($Result.Updates.Count -EQ 0) {
     Write-Host "There are no applicable updates for this computer to install." -ForegroundColor Yellow
 }
