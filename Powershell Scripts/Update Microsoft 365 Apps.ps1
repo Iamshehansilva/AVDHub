@@ -45,7 +45,6 @@ Else {
     Write-Verbose "Starting Microsoft Office Click-to-Run Service" -Verbose
 }
 
-
 #Updating Office to latest and version checking 
 $InstalledVersion = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -Name "VersionToReport"
 $Channel = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -Name "CDNBaseUrl" | Select-Object -Last 1
@@ -61,21 +60,25 @@ Elseif ($UsedChannel.latestVersion -ne $InstalledVersion) {
     $updateprocess = Start-process $OfficeC2RClientPath -ArgumentList "/update user", displaylevel=false, forceappshutdown=true -Wait -PassThru
 }
 
-Start-Sleep 10
+Start-Sleep 5
 
+while ((Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -Name "VersionToReport") -ne $UsedChannel.latestVersion ) {
+    Write-Verbose " Microsoft 365 (M365) Apps are still being updated" -Verbose
+    Start-Sleep 20
+}
+
+#Get the Updated Version
+$InstalledlatestVersion = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -Name "VersionToReport"
+Write-Verbose " Microsoft 365 (M365) Apps have been updated to $($UsedChannel.ChannelId) Channel | Version: $($InstalledlatestVersion)" -Verbose 
+
+<#
 $processname = Get-process -Name "OfficeClickToRun"
-
 While ($processname[0].HasExited -eq $false -and $processname[1].HasExited -eq $false ) {
         Write-Verbose " Microsoft 365 (M365) Apps are still being updated" -Verbose
         Start-Sleep 20
         $processname = Get-process -Name "OfficeClickToRun" 
 }
-
-Start-Sleep 2
-
-#Get the Updated Version
-$InstalledlatestVersion = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -Name "VersionToReport"
-Write-Verbose " Microsoft 365 (M365) Apps have been updated to $($UsedChannel.ChannelId) Channel | Version: $($InstalledlatestVersion)" -Verbose 
+Start-Sleep 2#>
 
 # End Logging
 Stop-Transcript
