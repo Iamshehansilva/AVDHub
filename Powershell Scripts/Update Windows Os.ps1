@@ -6,7 +6,7 @@
         $logDir: The directory where the log files will be stored.
 #>
 
-[String]$logDir = "$env:windir\Temp\NerdioManagerLogs\ScriptedActions\Win_Update"
+[String]$logDir = "$env:windir\Temp\XXX\XXX\Win_Update"
 
 # Configure powershell logging
 $SaveVerbosePreference = $VerbosePreference
