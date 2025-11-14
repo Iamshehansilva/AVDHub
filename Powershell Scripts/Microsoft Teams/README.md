@@ -1,5 +1,5 @@
 # Install-MicrosoftTeams.ps1  
-### Modern, Automated Microsoft Teams Installation Script for Azure Virtual Desktop & Nerdio
+### Modern, Automated Microsoft Teams Installation Script for Azure Virtual Desktop.
 This script fully automates the **installation, cleanup, and repair** of the new Microsoft Teams client (MSIX), Teams Meeting Add-in, WebView2, and WebRTC,optimized specifically for **Azure Virtual Desktop (AVD)**.
 
 It ensures a *clean, reliable, and repeatable* deployment across session hosts, master images, and automated pipelines.
