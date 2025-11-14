@@ -162,7 +162,7 @@ Otherwise, registry and MSI installs may fail.
 
 # Disclaimer
 
-This script is provided **as-is**, without any warranties or guarantees of any kind.Use it at your own risk.
+This script is provided **as-is**, without any warranties or guarantees of any kind. Use it at your own risk.
 
 Always test thoroughly in a **non-production / staging AVD environment** before rolling out to live hosts.
 
