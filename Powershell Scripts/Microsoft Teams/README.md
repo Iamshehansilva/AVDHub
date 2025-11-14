@@ -8,7 +8,7 @@ It ensures a *clean, reliable, and repeatable* deployment across session hosts, 
 ## Key Features
 - Removes old Teams versions (per-user + machine wide)  
 - Installs New Microsoft Teams (MSIX) for **all users**  
-- Installs Teams Meeting Add-in (HKLM — persistent for FSLogix profiles)  
+- Installs Teams Meeting Add-in (HKLM - persistent for FSLogix profiles)  
 - Ensures WebView2 runtime is installed  
 - Installs WebRTC service required for Teams optimization  
 - Registers Add-in DLLs for Outlook  
