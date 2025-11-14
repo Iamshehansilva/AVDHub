@@ -4,6 +4,11 @@ This script fully automates the **installation, cleanup, and repair** of the new
 
 It ensures a *clean, reliable, and repeatable* deployment across session hosts, master images, and automated pipelines.
 
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)]()
+[![AVD](https://img.shields.io/badge/Azure%20Virtual%20Desktop-Supported-success.svg)]()
+[![Nerdio Manager](https://img.shields.io/badge/Nerdio%20Manager-Supported-1abc9c.svg)]()
+
+
 ---
 ## Key Features
 - Removes old Teams versions (per-user + machine wide)  
