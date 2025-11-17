@@ -6,12 +6,15 @@
     - Enables WVD optimization
     - Uninstalls legacy Teams + old Add-ins + old WebRTC
     - Installs new Teams (MSIX via bootstrapper, provisioned for all users)
-    - Installs Teams Meeting Add-in (machine-wide) and registers DLLs (HKLM)
+    - Installs Teams Meeting Add-in machine-wide 
+      (via teamsbootstrapper --installTMA by default, or via MSI when InstallTeamsAndTMA = $false)
+    - Optional repair of Teams Meeting Add-in DLL registration when EnableDllRepair = $true
     - Installs WebRTC
     - Writes detailed logs to $LogRoot\$LogName
 
 .VERSION
-    1.0.0
+    1.0.0 - Initial version
+    1.0.1 - Added InstallTeamsAndTMA + EnableDllRepair switches, defaulting to teamsbootstrapper --installTMA
 
 .AUTHOR
     Shehan Silva
@@ -19,19 +22,21 @@
 
 # ------------------------ Settings ------------------------
 $ErrorActionPreference = 'Stop'
+$InstallTeamsAndTMA = $true
+$EnableClassicDllRepair = $false
 
 # Paths/URLs
-$WorkDir              = "C:\Windows\Temp\msteams_sa\install"
-$LogRoot              = "$env:WINDIR\Temp\CustomScriptLogs"
-$LogName              = "Teams-Install.log"
+$WorkDir = "C:\Windows\Temp\msteams_sa\install"
+$LogRoot = "$env:WINDIR\Temp\CustomScriptLogs"
+$LogName = "Teams-Install.log"
 $TeamsBootstrapperUrl = "https://go.microsoft.com/fwlink/?linkid=2243204&clcid=0x409"
-$TeamsMSIXUrl         = "https://go.microsoft.com/fwlink/?linkid=2196106"
-$WebRTC_Latest        = "https://aka.ms/msrdcwebrtcsvc/msi"
+$TeamsMSIXUrl = "https://go.microsoft.com/fwlink/?linkid=2196106"
+$WebRTC_Latest = "https://aka.ms/msrdcwebrtcsvc/msi"
 
 # ------------------------ Logging helper ------------------------
 function Write-Log {
     param(
-        [ValidateSet('Information', 'Warning', 'Error')]$Level='Information',
+        [ValidateSet('Information', 'Warning', 'Error')]$Level = 'Information',
         [string]$Message
     )
     try {
@@ -39,17 +44,19 @@ function Write-Log {
             New-Item -ItemType Directory -Path $LogRoot -Force | Out-Null
         }
 
-        $ts   = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $line = "$ts [$Level] $Message"
 
         Add-Content -Path (Join-Path $LogRoot $LogName) -Value $line
 
         if ($Level -eq 'Error') {
             Write-Error $Message
-        } else {
+        }
+        else {
             Write-Host "[$Level] $Message"
         }
-    } catch {
+    }
+    catch {
         Write-Host ("[LoggingError] " + $_.Exception.Message)
     }
 }
@@ -57,11 +64,12 @@ function Write-Log {
 # ------------------------ Utilities ------------------------
 function Test-Binary([string]$Path) {
     if (-not (Test-Path $Path)) { return $false }
-    $fs=[IO.File]::OpenRead($Path)
+    $fs = [IO.File]::OpenRead($Path)
     try {
-        $b0=$fs.ReadByte()
-        $b1=$fs.ReadByte()
-    } finally {
+        $b0 = $fs.ReadByte()
+        $b1 = $fs.ReadByte()
+    }
+    finally {
         $fs.Close()
     }
     return (
@@ -73,7 +81,7 @@ function Test-Binary([string]$Path) {
 # ------------------------ Function to Verify WebView2 ------------------------
 function Get-WebView2InstallerX64 {
     param([string]$OutPath = (Join-Path $WorkDir 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe'))
-    $ua = @{ 'User-Agent'='Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+    $ua = @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     $fw = 'https://go.microsoft.com/fwlink/?linkid=2124703'
     Invoke-WebRequest -Uri $fw -OutFile $OutPath -MaximumRedirection 10 -Headers $ua -UseBasicParsing -TimeoutSec 120
     if (!(Test-Binary $OutPath)) { throw "Invalid WebView2 binary" }
@@ -108,7 +116,8 @@ function Uninstall-ByDisplayName {
             if ($app.QuietUninstallString) {
                 Write-Log -Level 'Information' -Message ("Uninstalling (quiet) " + $app.DisplayName)
                 Start-Process -FilePath "cmd.exe" -ArgumentList "/c $($app.QuietUninstallString)" -Wait
-            } elseif ($app.UninstallString) {
+            }
+            elseif ($app.UninstallString) {
                 $raw = $app.UninstallString
                 if ($raw -match 'msiexec\.exe') {
                     # Prefer proper MSI uninstall: /x {GUID} /qn /norestart
@@ -118,20 +127,23 @@ function Uninstall-ByDisplayName {
                     }
                     if ($productCode) {
                         $cmd = "msiexec.exe /x $productCode /qn /norestart"
-                    } else {
+                    }
+                    else {
                         # Fallback: replace /I with /X and make it silent
                         $cmd = $raw -ireplace '\s/I', ' /X'
                         if ($cmd -notmatch '/qn') { $cmd += ' /qn /norestart' }
                     }
                     Write-Log -Level 'Information' -Message ("Uninstalling (msiexec) " + $app.DisplayName + " with: " + $cmd)
                     Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cmd" -Wait
-                } else {
+                }
+                else {
                     Write-Log -Level 'Information' -Message ("Uninstalling (exe) " + $app.DisplayName)
                     Start-Process -FilePath "cmd.exe" -ArgumentList "/c $raw /S" -Wait
                 }
             }
             Write-Log -Level 'Information' -Message ("Uninstalled: " + $app.DisplayName)
-        } catch {
+        }
+        catch {
             Write-Log -Level 'Warning' -Message ("Uninstall failed for " + $app.DisplayName + ": " + $_.Exception.Message)
         }
     }
@@ -140,22 +152,24 @@ function Uninstall-ByDisplayName {
 # ------------------------ Function to Find Teams Meeting Add-in ------------------------
 function Find-TeamsAddinMsi {
     param([int]$TimeoutSec = 300)
-    $sw=[Diagnostics.Stopwatch]::StartNew()
+    $sw = [Diagnostics.Stopwatch]::StartNew()
     $wa = Join-Path $env:ProgramFiles 'WindowsApps'
     while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
         try {
             $pkg = Get-AppxPackage -Name MSTeams -AllUsers -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($pkg) {
                 $candidate = Join-Path $env:ProgramFiles ("WindowsApps\MSTeams_{0}_x64__8wekyb3d8bbwe\MicrosoftTeamsMeetingAddinInstaller.msi" -f $pkg.Version)
-                if (Test-Path $candidate) { return @{ MsiPath=$candidate; TeamsVersion=$pkg.Version } }
+                if (Test-Path $candidate) { return @{ MsiPath = $candidate; TeamsVersion = $pkg.Version } }
             }
-        } catch {}
+        }
+        catch {}
         try {
             if (Test-Path $wa) {
                 $msi = Get-ChildItem $wa -Filter 'MicrosoftTeamsMeetingAddinInstaller.msi' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($msi) { return @{ MsiPath=$msi.FullName; TeamsVersion=$null } }
+                if ($msi) { return @{ MsiPath = $msi.FullName; TeamsVersion = $null } }
             }
-        } catch {}
+        }
+        catch {}
         Start-Sleep -Seconds 3
     }
     return $null
@@ -187,7 +201,8 @@ try {
     New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Teams" -Name "IsWVDEnvironment" -PropertyType DWord -Value 1 -Force | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Teams" -Name "disableAutoUpdate" -PropertyType DWord -Value 1 -Force | Out-Null
     Write-Log -Level 'Information' -Message 'Set Teams WVD optimization + disabled auto-update.'
-} catch {
+}
+catch {
     Write-Log -Level 'Warning' -Message ('Failed to set WVD/auto-update registry: ' + $_.Exception.Message)
 }
 
@@ -204,10 +219,12 @@ try {
         Write-Log -Level 'Information' -Message 'Installing WebView2 runtime.'
         $wv2 = Get-WebView2InstallerX64
         Start-Process -FilePath $wv2 -ArgumentList '/silent /install' -Wait
-    } else {
+    }
+    else {
         Write-Log -Level 'Information' -Message 'WebView2 runtime already present.'
     }
-} catch {
+}
+catch {
     Write-Log -Level 'Warning' -Message ('WebView2 installation exception: ' + $_.Exception.Message)
 }
 
@@ -220,11 +237,12 @@ Write-Log -Level 'Information' -Message "===== STEP 2 — Uninstall previous Tea
 try {
     # Per-user Teams (classic) cleanup
     $LocalTeamsDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Teams'
-    $UpdExe        = Join-Path $LocalTeamsDir 'Update.exe'
+    $UpdExe = Join-Path $LocalTeamsDir 'Update.exe'
     if (Test-Path $UpdExe) {
         Write-Log -Level 'Information' -Message 'Uninstalling per-user Teams via Update.exe'
         Start-Process $UpdExe -ArgumentList '-uninstall -s' -Wait
-    } else {
+    }
+    else {
         Write-Log -Level 'Information' -Message 'No per-user Teams found.'
     }
     if (Test-Path $LocalTeamsDir) {
@@ -242,7 +260,8 @@ try {
     Uninstall-ByDisplayName -NameLike "Teams Machine-Wide*"   -PublisherLike "Microsoft*"
     Uninstall-ByDisplayName -NameLike "*Teams Meeting Add-in*" -PublisherLike "Microsoft*"
     Uninstall-ByDisplayName -NameLike "Remote Desktop WebRTC*" -PublisherLike "Microsoft*"
-} catch {
+}
+catch {
     Write-Log -Level 'Warning' -Message ('Uninstall phase exception: ' + $_.Exception.Message)
 }
 
@@ -254,7 +273,7 @@ Write-Log -Level 'Information' -Message "===== STEP 3 — Install new Teams (ALL
 
 try {
     New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
-    $TeamsExe  = Join-Path $WorkDir 'teamsbootstrapper.exe'
+    $TeamsExe = Join-Path $WorkDir 'teamsbootstrapper.exe'
     $TeamsMSIX = Join-Path $WorkDir 'Teams_windows_x64.msix'
 
     Write-Log -Level 'Information' -Message 'Downloading Teams bootstrapper.'
@@ -265,13 +284,23 @@ try {
 
     if ((Test-Binary $TeamsExe) -and (Test-Path $TeamsMSIX)) {
         Write-Log -Level 'Information' -Message 'Both Teams files validated.'
-    } else {
+    }
+    else {
         if (!(Test-Binary $TeamsExe)) { throw "Invalid Teams bootstrapper binary." }
         if (!(Test-Path $TeamsMSIX)) { throw "Invalid Teams MSIX binary." }
     }
 
+    if ($InstallTeamsAndTMA) {
+        Write-Log -Level 'Information' -Message 'Installing Teams + Teams Meeting Add-in via teamsbootstrapper (-p --installTMA -o).'
+        $bootstrapArgs = @('-p', '--installTMA', '-o', $TeamsMSIX)
+    }
+    else {
+        Write-Log -Level 'Information' -Message 'Installing Teams ONLY via teamsbootstrapper (-p -o). TMA will be installed via MSI in Step 4.'
+        $bootstrapArgs = @('-p', '-o', $TeamsMSIX)
+    }
+
     Write-Log -Level 'Information' -Message 'Installing Teams (provisioning for all users).'
-    $proc = Start-Process $TeamsExe -ArgumentList '-p', '-o', $TeamsMSIX -Wait -PassThru
+    $proc = Start-Process $TeamsExe -ArgumentList $bootstrapArgs -Wait -PassThru
     if ($proc.ExitCode -ne 0) { throw "Teams bootstrapper exit code $($proc.ExitCode)" }
 
     # Report installed Teams package version for logs
@@ -284,11 +313,13 @@ try {
     }
     if ($pkg) {
         Write-Log -Level 'Information' -Message ('Found new Teams version: ' + $pkg.Version)
-    } else {
+    }
+    else {
         Write-Log -Level 'Warning' -Message 'New Teams package not detected post-install.'
     }
 
-} catch {
+}
+catch {
     Write-Log -Level 'Error' -Message ('Teams installation failed: ' + $_.Exception.Message)
     throw
 }
@@ -299,88 +330,109 @@ try {
 
 Write-Log -Level 'Information' -Message "===== STEP 4 — Install Teams Meeting Add-in + DLL registration ====="
 
-try {
-    Write-Log -Level 'Information' -Message 'Locating Teams Meeting Add-in MSI under WindowsApps.'
-    $addin = Find-TeamsAddinMsi -TimeoutSec 600
+if (-not $InstallTeamsAndTMA) {
 
-    if (-not $addin) {
-        Write-Log -Level 'Warning' -Message 'Add-in install skipped: Teams Meeting Add-in MSI not found.'
-        return
+    try {
+        Write-Log -Level 'Information' -Message 'InstallTeamsAndTMA = False. Installing Teams Meeting Add-in via MSI (WindowsApps).'
+        Write-Log -Level 'Information' -Message 'Locating Teams Meeting Add-in MSI under WindowsApps.'
+        $addin = Find-TeamsAddinMsi -TimeoutSec 600
+
+        if (-not $addin) {
+            Write-Log -Level 'Warning' -Message 'Add-in install skipped: Teams Meeting Add-in MSI not found.'
+            return
+        }
+
+        $TMAPath = $addin.MsiPath
+
+        Write-Log -Level 'Information' -Message ('Add-in MSI initial path: ' + $TMAPath)
+
+        if (-not (Test-Path $TMAPath)) {
+            throw "Add-in MSI path does not exist: $TMAPath"
+        }
+
+        # Copy MSI out of WindowsApps into a normal working folder
+        New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
+        $LocalMsi = Join-Path $WorkDir 'MicrosoftTeamsMeetingAddinInstaller.msi'
+        Copy-Item -Path $TMAPath -Destination $LocalMsi -Force
+        Write-Log -Level 'Information' -Message ('Copied Add-in MSI to: ' + $LocalMsi)
+        $TMAPath = $LocalMsi
+
+        # Log Teams package version (informational)
+        $NewTeamsPackage = Get-AppxPackage -Name MSTeams -AllUsers | Select-Object -First 1
+        if ($NewTeamsPackage) {
+            Write-Log -Level 'Information' -Message ('Detected new Teams package version: ' + $NewTeamsPackage.Version)
+        }
+        else {
+            Write-Log -Level 'Warning' -Message 'New Teams package not detected.'
+        }
+
+        # Read binary version for versioned folder naming (best effort)
+        $TMAVersion = $null
+        $publisher = Get-AppLockerFileInformation -Path $TMAPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Publisher -ErrorAction SilentlyContinue
+
+        if ($publisher -and $publisher.BinaryVersion) {
+            $TMAVersion = $publisher.BinaryVersion
+            Write-Log -Level 'Information' -Message ('Using BinaryVersion for add-in target dir: ' + $TMAVersion)
+        }
+
+        if ($TMAVersion) {
+            $TargetDir = ("{0}\Microsoft\TeamsMeetingAdd-in\{1}\" -f ${env:ProgramFiles(x86)}, $TMAVersion)
+        }
+        else {
+            Write-Log -Level 'Warning' -Message 'Binary version not found — using default path without version subfolder.'
+            $TargetDir = ("{0}\Microsoft\TeamsMeetingAdd-in\" -f ${env:ProgramFiles(x86)})
+        }
+
+        # Build msiexec parameters with log
+        $AddinLog = Join-Path $LogRoot 'Teams-Addin.log'
+        $msiArgs = '/i "{0}" TARGETDIR="{1}" ALLUSERS=1 /qn /norestart /log "{2}"' -f $TMAPath, $TargetDir, $AddinLog
+
+        Write-Log -Level 'Information' -Message ('Installing Teams Meeting Add-in with args: ' + $msiArgs)
+        $proc = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+
+        if ($proc.ExitCode -ne 0) {
+            throw "Teams Meeting Add-in MSI failed with exit code $($proc.ExitCode). See log: $AddinLog"
+        }
+        else {
+            Write-Log -Level 'Information' -Message 'Teams Meeting Add-in installed successfully (machine-wide).'
+        }
+
+        # Optional DLL repair (modern AddinLoader DLLs only – no classic Teams)
+        if ($EnableClassicDllRepair) {
+            Write-Log -Level 'Information' -Message 'EnableDllRepair = True. Starting AddinLoader DLL repair.'
+
+            $X64Dll = Join-Path $TargetDir 'x64\Microsoft.Teams.AddinLoader.dll'
+            $X86Dll = Join-Path $TargetDir 'x86\Microsoft.Teams.AddinLoader.dll'
+
+            if (Test-Path $X64Dll) {
+                Write-Log -Level 'Information' -Message "Repair: Registering x64 AddinLoader.dll: $X64Dll"
+                Start-Process "$env:WINDIR\System32\regsvr32.exe" -ArgumentList '/s', '/n', '/i', $X64Dll -Wait
+            }
+            else {
+                Write-Log -Level 'Warning' -Message ("Repair skipped: x64 AddinLoader.dll not found at " + $X64Dll)
+            }
+
+            if (Test-Path $X86Dll) {
+                Write-Log -Level 'Information' -Message "Repair: Registering x86 AddinLoader.dll: $X86Dll"
+                Start-Process "$env:WINDIR\SysWOW64\regsvr32.exe" -ArgumentList '/s', '/n', '/i', $X86Dll -Wait
+            }
+            else {
+                Write-Log -Level 'Warning' -Message ("Repair skipped: x86 AddinLoader.dll not found at " + $X86Dll)
+            }
+
+        }
+        else {
+            Write-Log -Level 'Information' -Message 'EnableDllRepair = False. Skipping AddinLoader DLL repair (MSI/Teamsbootstrapper handles registration).'
+        }
+
     }
-
-    $TMAPath      = $addin.MsiPath
-
-    Write-Log -Level 'Information' -Message ('Add-in MSI initial path: ' + $TMAPath)
-
-    if (-not (Test-Path $TMAPath)) {
-        throw "Add-in MSI path does not exist: $TMAPath"
+    catch {
+        Write-Log -Level 'Error' -Message ('Teams Meeting Add-in installation failed: ' + $_.Exception.Message)
+        throw
     }
-
-    # Copy MSI out of WindowsApps into a normal working folder
-    New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
-    $LocalMsi = Join-Path $WorkDir 'MicrosoftTeamsMeetingAddinInstaller.msi'
-    Copy-Item -Path $TMAPath -Destination $LocalMsi -Force
-    Write-Log -Level 'Information' -Message ('Copied Add-in MSI to: ' + $LocalMsi)
-    $TMAPath = $LocalMsi
-
-    # Log Teams package version (informational)
-    $NewTeamsPackage = Get-AppxPackage -Name MSTeams -AllUsers | Select-Object -First 1
-    if ($NewTeamsPackage) {
-        Write-Log -Level 'Information' -Message ('Detected new Teams package version: ' + $NewTeamsPackage.Version)
-    } else {
-        Write-Log -Level 'Warning' -Message 'New Teams package not detected.'
-    }
-
-    # Read binary version for versioned folder naming (best effort)
-    $TMAVersion = $null
-    $publisher  = Get-AppLockerFileInformation -Path $TMAPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Publisher -ErrorAction SilentlyContinue
-
-    if ($publisher -and $publisher.BinaryVersion) {
-        $TMAVersion = $publisher.BinaryVersion
-        Write-Log -Level 'Information' -Message ('Using BinaryVersion for add-in target dir: ' + $TMAVersion)
-    }
-
-    if ($TMAVersion) {
-        $TargetDir = ("{0}\Microsoft\TeamsMeetingAdd-in\{1}\" -f ${env:ProgramFiles(x86)}, $TMAVersion)
-    } else {
-        Write-Log -Level 'Warning' -Message 'Binary version not found — using default path without version subfolder.'
-        $TargetDir = ("{0}\Microsoft\TeamsMeetingAdd-in\" -f ${env:ProgramFiles(x86)})
-    }
-
-    # Build msiexec parameters with log
-    $AddinLog = Join-Path $LogRoot 'Teams-Addin.log'
-    $msiArgs  = '/i "{0}" TARGETDIR="{1}" ALLUSERS=1 /qn /norestart /log "{2}"' -f $TMAPath, $TargetDir, $AddinLog
-
-    Write-Log -Level 'Information' -Message ('Installing Teams Meeting Add-in with args: ' + $msiArgs)
-    $proc = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
-
-    if ($proc.ExitCode -ne 0) {
-        throw "Teams Meeting Add-in MSI failed with exit code $($proc.ExitCode). See log: $AddinLog"
-    } else {
-        Write-Log -Level 'Information' -Message 'Teams Meeting Add-in installed successfully (machine-wide).'
-    }
-
-    # Register DLLs
-    $X64Dll = Join-Path $TargetDir 'x64\Microsoft.Teams.AddinLoader.dll'
-    $X86Dll = Join-Path $TargetDir 'x86\Microsoft.Teams.AddinLoader.dll'
-
-    if (Test-Path $X64Dll) {
-        Write-Log -Level 'Information' -Message 'Registering Teams Add-in x64 DLL (machine-wide).'
-        Start-Process "$env:WINDIR\System32\regsvr32.exe" -ArgumentList '/s', '/n', '/i', $X64Dll -Wait
-    } else {
-        Write-Log -Level 'Warning' -Message ('x64 Add-in DLL not found at ' + $X64Dll)
-    }
-
-    if (Test-Path $X86Dll) {
-        Write-Log -Level 'Information' -Message 'Registering Teams Add-in x86 DLL (machine-wide).'
-        Start-Process "$env:WINDIR\SysWOW64\regsvr32.exe" -ArgumentList '/s', '/n', '/i', $X86Dll -Wait
-    } else {
-        Write-Log -Level 'Warning' -Message ('x86 Add-in DLL not found at ' + $X86Dll)
-    }
-
-} catch {
-    Write-Log -Level 'Error' -Message ('Teams Meeting Add-in installation failed: ' + $_.Exception.Message)
-    throw
+}
+else {
+    Write-Log -Level 'Information' -Message 'InstallTeamsAndTMA = True. Skipping separate MSI-based Add-in install because teamsbootstrapper --installTMA already handled TMA.'
 }
 
 # --------------------------------------------------------
@@ -404,7 +456,8 @@ try {
     Write-Log -Level 'Information' -Message 'Installing WebRTC service (silent).'
     Start-Process "msiexec.exe" -ArgumentList "/i `"$WebRtcMsi`" /qn /norestart /log `"$LogRoot\Teams-WebRTC.log`"" -Wait
 
-} catch {
+}
+catch {
     Write-Log -Level 'Error' -Message ('WebRTC installation failed: ' + $_.Exception.Message)
     throw
 }
@@ -420,6 +473,7 @@ try {
         Write-Log -Level 'Information' -Message ('Cleaning up working directory. ' + $WorkDir)
         Remove-Item -Path $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-} catch {
+}
+catch {
     Write-Log -Level 'Warning' -Message ('Cleanup failed: ' + $_.Exception.Message)
 }

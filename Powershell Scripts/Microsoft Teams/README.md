@@ -13,23 +13,44 @@ It ensures a *clean, reliable, and repeatable* deployment across session hosts, 
 ## Key Features
 - Removes old Teams versions (per-user + machine wide)  
 - Installs New Microsoft Teams (MSIX) for **all users**  
-- Installs Teams Meeting Add-in (HKLM - persistent for FSLogix profiles)  
+- Installs the Teams Meeting Add-in (TMA) machine-wide
+  - By default via teamsbootstrapper.exe --installTMA
+  - Or via MSI (from WindowsApps) when $InstallTeamsAndTMA = $false
 - Ensures WebView2 runtime is installed  
 - Installs WebRTC service required for Teams optimization  
-- Registers Add-in DLLs for Outlook  
+- Optional Add-in DLL repair mode ($EnableDllRepair = $true)  
 - Generates detailed logs under:  `C:\Windows\Temp\CustomScriptLogs`  
 - Works with:
   - Azure VM Custom Script Extension  
   - Nerdio Scripted Actions  
   - Master image pipelines  
-  - Manual execution on servers 
+  - Manual execution on servers
 
+# Script Behavior Control (Internal Switches)
+
+The script includes two internal variables:
+```powershell
+$InstallTeamsAndTMA         = $true
+$EnableClassicDllRepair     = $false
+```
+## $InstallTeamsAndTMA
+| Variable              | Behavior |
+|-----------------------|-------------|
+| `$true (default)` |  Installs Teams + Teams Meeting Add-in using teamsbootstrapper.exe -p --installTMA -o "<Teams.msix>". This is the recommended Microsoft method.MSI. |
+| `$false`    | Installs Teams via bootstrapper, AND installs the Teams Meeting Add-in via MSI extracted from WindowsApps. |
+
+## $EnableClassicDllRepair 
+| Variable              | Behavior |
+|-----------------------|-------------|
+| `$false (default)` |  No DLL registration actions. MSI/bootstrapper handle everything (recommended). |
+| `$true`    | Repairs AddinLoader DLL registration via regsvr32 (for broken Outlook/TMA environments) |
 #  How to Use
 
 ## 1. **Azure Virtual Desktop – Custom Script Extension**
 
 Use in automation pipelines or ARM/Bicep:
-```bashaz vm extension set
+```bash
+az vm extension set
 --publisher Microsoft.Compute
 --name CustomScriptExtension
 --settings '{"fileUris": ["https://raw.githubusercontent.com/
@@ -86,8 +107,8 @@ Then verify Outlook:
 
 **File → Options → Add-ins**
 
-![alt text](Outlook-Addin.png)
-![alt text](Teams-AddinOutlook.png)
+![alt text](/Powershell%20Scripts/Microsoft%20Teams/img/Outlook-Addin.png)
+![alt text](/Powershell%20Scripts/Microsoft%20Teams/img/Teams-AddinOutlook.png)
 
 ## 4. Validate WebRTC
 
@@ -102,7 +123,7 @@ Inside Teams:
 
 **Settings → About Teams**
 
-![alt text](TeamsOptimizer.png)
+![alt text](/Powershell%20Scripts/Microsoft%20Teams/img/TeamsOptimizer.png)
 
 # Known Issues
 
@@ -159,6 +180,10 @@ Script must run under:
 - Local Administrator
 
 Otherwise, registry and MSI installs may fail.
+
+# Feedback / Issues
+
+If you encounter any issues or have suggestions for improvements, please feel free to open an issue on this repository.
 
 # Disclaimer
 
