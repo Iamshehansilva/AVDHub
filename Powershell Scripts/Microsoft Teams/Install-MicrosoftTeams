@@ -8,7 +8,7 @@
     - Installs new Teams (MSIX via bootstrapper, provisioned for all users)
     - Installs Teams Meeting Add-in machine-wide 
       (via teamsbootstrapper --installTMA by default, or via MSI when InstallTeamsAndTMA = $false)
-    - Optional repair of Teams Meeting Add-in DLL registration when EnableDllRepair = $true
+    - Optional repair of Teams Meeting Add-in DLL registration when $EnableClassicDllRepair = $true
     - Installs WebRTC
     - Writes detailed logs to $LogRoot\$LogName
 
