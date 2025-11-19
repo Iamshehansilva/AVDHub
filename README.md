@@ -27,13 +27,6 @@ You can run these scripts using any of the following methods:
 
 ## Contributions
 
-If you'd like to contribute:
-
-- Submit a pull request
-- Report issues
-- Suggest improvements
-- Request new automation scripts
-
 Community-driven improvements are welcome.
 
 

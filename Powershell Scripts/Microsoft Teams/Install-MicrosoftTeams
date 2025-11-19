@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     - Enables WVD optimization
-    - Uninstalls legacy Teams + old Add-ins + old WebRTC
+    - Uninstalls Classic Teams + old Add-ins + old WebRTC
     - Installs new Teams (MSIX via bootstrapper, provisioned for all users)
     - Installs Teams Meeting Add-in machine-wide 
       (via teamsbootstrapper --installTMA by default, or via MSI when InstallTeamsAndTMA = $false)
