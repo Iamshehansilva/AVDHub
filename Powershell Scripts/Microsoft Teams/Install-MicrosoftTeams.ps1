@@ -57,7 +57,7 @@ function Write-Log {
         }
     }
     catch {
-        Write-Host ("[LoggingError] " + $_.Exception.Message)
+        Write-Host ("[LoggingError]" + $_.Exception.Message)
     }
 }
 
@@ -114,7 +114,7 @@ function Uninstall-ByDisplayName {
     foreach ($app in $apps) {
         try {
             if ($app.QuietUninstallString) {
-                Write-Log -Level 'Information' -Message ("Uninstalling (quiet) " + $app.DisplayName)
+                Write-Log -Level 'Information' -Message ("Uninstalling (quiet)" + $app.DisplayName)
                 Start-Process -FilePath "cmd.exe" -ArgumentList "/c $($app.QuietUninstallString)" -Wait
             }
             elseif ($app.UninstallString) {
@@ -133,18 +133,18 @@ function Uninstall-ByDisplayName {
                         $cmd = $raw -ireplace '\s/I', ' /X'
                         if ($cmd -notmatch '/qn') { $cmd += ' /qn /norestart' }
                     }
-                    Write-Log -Level 'Information' -Message ("Uninstalling (msiexec) " + $app.DisplayName + " with: " + $cmd)
+                    Write-Log -Level 'Information' -Message ("Uninstalling (msiexec)" + $app.DisplayName + "with:" + $cmd)
                     Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cmd" -Wait
                 }
                 else {
-                    Write-Log -Level 'Information' -Message ("Uninstalling (exe) " + $app.DisplayName)
+                    Write-Log -Level 'Information' -Message ("Uninstalling (exe)" + $app.DisplayName)
                     Start-Process -FilePath "cmd.exe" -ArgumentList "/c $raw /S" -Wait
                 }
             }
-            Write-Log -Level 'Information' -Message ("Uninstalled: " + $app.DisplayName)
+            Write-Log -Level 'Information' -Message ("Uninstalled:" + $app.DisplayName)
         }
         catch {
-            Write-Log -Level 'Warning' -Message ("Uninstall failed for " + $app.DisplayName + ": " + $_.Exception.Message)
+            Write-Log -Level 'Warning' -Message ("Uninstall failed for" + $app.DisplayName + ": " + $_.Exception.Message)
         }
     }
 }
@@ -191,10 +191,10 @@ if (-not $IsAdmin) {
 Write-Log -Level 'Information' -Message '################# New Script Run #################'
 
 # --------------------------------------------------------
-# STEP 0 — Enable WVD optimizations + disable auto-update
+# STEP 0 - Enable WVD optimizations + disable auto-update
 # --------------------------------------------------------
 
-Write-Log -Level 'Information' -Message "===== STEP 0 — Enable WVD optimizations + disable auto-update ====="
+Write-Log -Level 'Information' -Message "---- STEP 0: Enable WVD optimizations + disable auto-update ----"
 
 try {
     New-Item -Path "HKLM:\SOFTWARE\Microsoft\Teams" -Force | Out-Null
@@ -203,14 +203,14 @@ try {
     Write-Log -Level 'Information' -Message 'Set Teams WVD optimization + disabled auto-update.'
 }
 catch {
-    Write-Log -Level 'Warning' -Message ('Failed to set WVD/auto-update registry: ' + $_.Exception.Message)
+    Write-Log -Level 'Warning' -Message ('Failed to set WVD/auto-update registry:' + $_.Exception.Message)
 }
 
 # --------------------------------------------------------
-# STEP 1 — Ensure WebView2 is installed
+# STEP 1 - Ensure WebView2 is installed
 # --------------------------------------------------------
 
-Write-Log -Level 'Information' -Message "===== STEP 1 — Ensure WebView2 is installed ====="
+Write-Log -Level 'Information' -Message "---- STEP 1 - Ensure WebView2 is installed ----"
 
 try {
     $wvKey1 = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
@@ -225,14 +225,14 @@ try {
     }
 }
 catch {
-    Write-Log -Level 'Warning' -Message ('WebView2 installation exception: ' + $_.Exception.Message)
+    Write-Log -Level 'Warning' -Message ('WebView2 installation exception:' + $_.Exception.Message)
 }
 
 # --------------------------------------------------------
-# STEP 2 — Uninstall previous Teams + Add-ins + WebRTC
+# STEP 2 - Uninstall previous Teams + Add-ins + WebRTC
 # --------------------------------------------------------
 
-Write-Log -Level 'Information' -Message "===== STEP 2 — Uninstall previous Teams + Add-ins + WebRTC ====="
+Write-Log -Level 'Information' -Message "---- STEP 2: Uninstall previous Teams + Add-ins + WebRTC ----"
 
 try {
     # Per-user Teams (classic) cleanup
@@ -262,14 +262,14 @@ try {
     Uninstall-ByDisplayName -NameLike "Remote Desktop WebRTC*" -PublisherLike "Microsoft*"
 }
 catch {
-    Write-Log -Level 'Warning' -Message ('Uninstall phase exception: ' + $_.Exception.Message)
+    Write-Log -Level 'Warning' -Message ('Uninstall phase exception:' + $_.Exception.Message)
 }
 
 # --------------------------------------------------------
-# STEP 3 — Install new Teams (ALL users)
+# STEP 3 - Install new Teams (ALL users)
 # --------------------------------------------------------
 
-Write-Log -Level 'Information' -Message "===== STEP 3 — Install new Teams (ALL users) ====="
+Write-Log -Level 'Information' -Message "---- STEP 3 - Install new Teams (ALL users) ----"
 
 try {
     New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
@@ -320,15 +320,15 @@ try {
 
 }
 catch {
-    Write-Log -Level 'Error' -Message ('Teams installation failed: ' + $_.Exception.Message)
+    Write-Log -Level 'Error' -Message ('Teams installation failed:' + $_.Exception.Message)
     throw
 }
 
 # --------------------------------------------------------
-# STEP 4 — Install Teams Meeting Add-in + DLL registration
+# STEP 4 - Install Teams Meeting Add-in + DLL registration
 # --------------------------------------------------------
 
-Write-Log -Level 'Information' -Message "===== STEP 4 — Install Teams Meeting Add-in + DLL registration ====="
+Write-Log -Level 'Information' -Message "---- STEP 4: Install Teams Meeting Add-in + DLL registration ----"
 
 if (-not $InstallTeamsAndTMA) {
 
@@ -379,7 +379,7 @@ if (-not $InstallTeamsAndTMA) {
             $TargetDir = ("{0}\Microsoft\TeamsMeetingAdd-in\{1}\" -f ${env:ProgramFiles(x86)}, $TMAVersion)
         }
         else {
-            Write-Log -Level 'Warning' -Message 'Binary version not found — using default path without version subfolder.'
+            Write-Log -Level 'Warning' -Message 'Binary version not found - using default path without version subfolder.'
             $TargetDir = ("{0}\Microsoft\TeamsMeetingAdd-in\" -f ${env:ProgramFiles(x86)})
         }
 
@@ -427,7 +427,7 @@ if (-not $InstallTeamsAndTMA) {
 
     }
     catch {
-        Write-Log -Level 'Error' -Message ('Teams Meeting Add-in installation failed: ' + $_.Exception.Message)
+        Write-Log -Level 'Error' -Message ('Teams Meeting Add-in installation failed:' + $_.Exception.Message)
         throw
     }
 }
@@ -436,10 +436,10 @@ else {
 }
 
 # --------------------------------------------------------
-# STEP 5 — Install WebRTC
+# STEP 5 - Install WebRTC
 # --------------------------------------------------------
 
-Write-Log -Level 'Information' -Message "===== STEP 5 — Install WebRTC ====="
+Write-Log -Level 'Information' -Message '---- STEP 5: Install WebRTC ----'
 
 try {
     $webrtcUrl = $WebRTC_Latest
@@ -447,7 +447,7 @@ try {
     New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
     $WebRtcMsi = Join-Path $WorkDir 'MsRdcWebRTCSvc_x64.msi'
 
-    Write-Log -Level 'Information' -Message ('Downloading WebRTC from ' + $webrtcUrl)
+    Write-Log -Level 'Information' -Message ('Downloading WebRTC from' + $webrtcUrl)
 
     Invoke-WebRequest -Uri $webrtcUrl -OutFile $WebRtcMsi -UseBasicParsing
 
@@ -458,22 +458,22 @@ try {
 
 }
 catch {
-    Write-Log -Level 'Error' -Message ('WebRTC installation failed: ' + $_.Exception.Message)
+    Write-Log -Level 'Error' -Message ('WebRTC installation failed:' + $_.Exception.Message)
     throw
 }
 
 # --------------------------------------------------------
-# STEP 6 — Cleanup
+# STEP 6 - Cleanup
 # --------------------------------------------------------
 
-Write-Log -Level 'Information' -Message "===== STEP 6 — Cleanup ====="
+ Write-Log -Level 'Information' -Message '---- STEP:6 Cleanup ----'
 
 try {
     if (Test-Path $WorkDir) {
-        Write-Log -Level 'Information' -Message ('Cleaning up working directory. ' + $WorkDir)
+        Write-Log -Level 'Information' -Message ('Cleaning up working directory' + $WorkDir)
         Remove-Item -Path $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 catch {
-    Write-Log -Level 'Warning' -Message ('Cleanup failed: ' + $_.Exception.Message)
+    Write-Log -Level 'Warning' -Message ('Cleanup failed:' + $_.Exception.Message)
 }
